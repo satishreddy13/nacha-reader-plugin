@@ -1,0 +1,13 @@
+/Volumes/projects/claudeCode/claudeProjects/nacha-reader-plugin/src/main/java/com/example/pdi/plugin/nachareader/nacha/NachaRecord.java
+/Volumes/projects/claudeCode/claudeProjects/nacha-reader-plugin/src/main/java/com/example/pdi/plugin/nachareader/nacha/EntryDetailRecord.java
+/Volumes/projects/claudeCode/claudeProjects/nacha-reader-plugin/src/main/java/com/example/pdi/plugin/nachareader/nacha/BatchHeaderRecord.java
+/Volumes/projects/claudeCode/claudeProjects/nacha-reader-plugin/src/main/java/com/example/pdi/plugin/nachareader/NachaReaderStepMeta.java
+/Volumes/projects/claudeCode/claudeProjects/nacha-reader-plugin/src/main/java/com/example/pdi/plugin/nachareader/nacha/RecordType.java
+/Volumes/projects/claudeCode/claudeProjects/nacha-reader-plugin/src/main/java/com/example/pdi/plugin/nachareader/nacha/BatchControlRecord.java
+/Volumes/projects/claudeCode/claudeProjects/nacha-reader-plugin/src/main/java/com/example/pdi/plugin/nachareader/NachaReaderStep.java
+/Volumes/projects/claudeCode/claudeProjects/nacha-reader-plugin/src/main/java/com/example/pdi/plugin/nachareader/nacha/FileHeaderRecord.java
+/Volumes/projects/claudeCode/claudeProjects/nacha-reader-plugin/src/main/java/com/example/pdi/plugin/nachareader/NachaReaderStepData.java
+/Volumes/projects/claudeCode/claudeProjects/nacha-reader-plugin/src/main/java/com/example/pdi/plugin/nachareader/NachaReaderStepDialog.java
+/Volumes/projects/claudeCode/claudeProjects/nacha-reader-plugin/src/main/java/com/example/pdi/plugin/nachareader/nacha/NachaParser.java
+/Volumes/projects/claudeCode/claudeProjects/nacha-reader-plugin/src/main/java/com/example/pdi/plugin/nachareader/nacha/AddendaRecord.java
+/Volumes/projects/claudeCode/claudeProjects/nacha-reader-plugin/src/main/java/com/example/pdi/plugin/nachareader/nacha/FileControlRecord.java
