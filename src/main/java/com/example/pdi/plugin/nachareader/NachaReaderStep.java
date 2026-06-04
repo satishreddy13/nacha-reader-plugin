@@ -17,6 +17,8 @@ import org.pentaho.di.trans.step.StepMetaInterface;
 import com.example.pdi.plugin.nachareader.nacha.NachaParser;
 import com.example.pdi.plugin.nachareader.nacha.NachaParser.ParsedEntry;
 import com.example.pdi.plugin.nachareader.nacha.NachaParser.RawRecord;
+import com.example.pdi.plugin.nachareader.nacha.NachaValidationError;
+import com.example.pdi.plugin.nachareader.nacha.NachaValidator;
 
 /**
  * Reads a NACHA ACH file whose path is supplied by an upstream field,
@@ -60,21 +62,30 @@ public class NachaReaderStep extends BaseStep implements StepInterface {
         filePath = environmentSubstitute(filePath);
 
         try {
-            NachaParser parser = new NachaParser();
-            if (meta.getOutputMode() == NachaReaderStepMeta.OutputMode.ENTRY_DETAILS) {
-                List<ParsedEntry> entries = parser.parseEntryDetails(Paths.get(filePath));
+            if (meta.getOutputMode() == NachaReaderStepMeta.OutputMode.VALIDATE) {
+                List<NachaValidationError> errors = new NachaValidator()
+                    .validate(Paths.get(filePath), meta.getValidationConfig());
+                if (errors.isEmpty()) {
+                    putRow(data.outputRowMeta, buildValidationRow(r, "PASS", null));
+                } else {
+                    for (NachaValidationError error : errors) {
+                        putRow(data.outputRowMeta, buildValidationRow(r, "FAIL", error));
+                    }
+                }
+            } else if (meta.getOutputMode() == NachaReaderStepMeta.OutputMode.ENTRY_DETAILS) {
+                List<ParsedEntry> entries = new NachaParser().parseEntryDetails(Paths.get(filePath));
                 for (ParsedEntry entry : entries) {
                     putRow(data.outputRowMeta, buildEntryRow(r, entry));
                 }
             } else {
-                List<RawRecord> records = parser.parseAllRecords(Paths.get(filePath));
+                List<RawRecord> records = new NachaParser().parseAllRecords(Paths.get(filePath));
                 for (RawRecord record : records) {
                     putRow(data.outputRowMeta, buildRawRow(r, record));
                 }
             }
         } catch (Exception e) {
             throw new KettleException(
-                "Error parsing NACHA file '" + filePath + "': " + e.getMessage(), e);
+                "Error processing NACHA file '" + filePath + "': " + e.getMessage(), e);
         }
 
         if (checkFeedback(getLinesWritten())) {
@@ -86,6 +97,18 @@ public class NachaReaderStep extends BaseStep implements StepInterface {
     // -----------------------------------------------------------------------
     // Row builders
     // -----------------------------------------------------------------------
+
+    private Object[] buildValidationRow(Object[] inputRow, String status, NachaValidationError error) {
+        int inputSize = getInputRowMeta().size();
+        Object[] out = RowDataUtil.resizeArray(inputRow, data.outputRowMeta.size());
+        int i = inputSize;
+        out[i++] = status;
+        out[i++] = error != null ? String.valueOf(error.lineNumber) : "";
+        out[i++] = error != null ? error.errorCode  : "";
+        out[i++] = error != null ? error.message    : "";
+        out[i]   = error != null ? error.rawLine    : "";
+        return out;
+    }
 
     private Object[] buildEntryRow(Object[] inputRow, ParsedEntry e) {
         int inputSize = getInputRowMeta().size();

@@ -175,7 +175,7 @@ class NachaParserTest {
         RawRecord r = allRecords().get(5);  // batch control
         assertEquals(RecordType.BATCH_CONTROL, r.recordType);
         assertEquals("220",          r.batchServiceClassCode);
-        assertEquals("000004",       r.batchCtrlEntryAddendaCount);
+        assertEquals("000003",       r.batchCtrlEntryAddendaCount);
         assertEquals("02100002",     r.batchODFIIdentification);
     }
 

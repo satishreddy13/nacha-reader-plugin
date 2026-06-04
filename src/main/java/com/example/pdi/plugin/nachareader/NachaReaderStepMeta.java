@@ -25,6 +25,8 @@ import org.pentaho.di.trans.step.StepMetaInterface;
 import org.pentaho.metastore.api.IMetaStore;
 import org.w3c.dom.Node;
 
+import com.example.pdi.plugin.nachareader.nacha.NachaValidationConfig;
+
 @Step(
   id          = "NachaReaderStep",
   name        = "NACHA ACH File Reader",
@@ -34,29 +36,35 @@ import org.w3c.dom.Node;
 )
 public class NachaReaderStepMeta extends BaseStepMeta implements StepMetaInterface {
 
-    public enum OutputMode { ENTRY_DETAILS, ALL_RECORDS }
+    public enum OutputMode { ENTRY_DETAILS, ALL_RECORDS, VALIDATE }
 
     // ---- configurable fields ----
-    private String     filePathField = "file_path";
-    private OutputMode outputMode    = OutputMode.ENTRY_DETAILS;
+    private String               filePathField    = "file_path";
+    private OutputMode           outputMode       = OutputMode.ENTRY_DETAILS;
+    private NachaValidationConfig validationConfig = new NachaValidationConfig();
 
     // ---- accessors ----
-    public String     getFilePathField()         { return filePathField; }
-    public void       setFilePathField(String v) { filePathField = v; }
-    public OutputMode getOutputMode()            { return outputMode; }
-    public void       setOutputMode(OutputMode v){ outputMode = v; }
+    public String               getFilePathField()                    { return filePathField; }
+    public void                 setFilePathField(String v)            { filePathField = v; }
+    public OutputMode           getOutputMode()                       { return outputMode; }
+    public void                 setOutputMode(OutputMode v)           { outputMode = v; }
+    public NachaValidationConfig getValidationConfig()                { return validationConfig; }
+    public void                 setValidationConfig(NachaValidationConfig v) { validationConfig = v; }
 
     // ---- lifecycle ----
 
     @Override
     public void setDefault() {
-        filePathField = "file_path";
-        outputMode    = OutputMode.ENTRY_DETAILS;
+        filePathField    = "file_path";
+        outputMode       = OutputMode.ENTRY_DETAILS;
+        validationConfig = new NachaValidationConfig();
     }
 
     @Override
     public Object clone() {
-        return (NachaReaderStepMeta) super.clone();
+        NachaReaderStepMeta clone = (NachaReaderStepMeta) super.clone();
+        clone.validationConfig = validationConfig.clone();
+        return clone;
     }
 
     @Override
@@ -65,9 +73,14 @@ public class NachaReaderStepMeta extends BaseStepMeta implements StepMetaInterfa
             VariableSpace space, Repository repository, IMetaStore metaStore)
             throws KettleStepException {
 
-        if (outputMode == OutputMode.ENTRY_DETAILS) {
+        if (outputMode == OutputMode.VALIDATE) {
+            addField(rowMeta, origin, "nacha_validation_status");      // "PASS" or "FAIL"
+            addField(rowMeta, origin, "nacha_validation_line_number"); // 1-based; "" for PASS
+            addField(rowMeta, origin, "nacha_validation_error_code");  // error code; "" for PASS
+            addField(rowMeta, origin, "nacha_validation_message");     // description; "" for PASS
+            addField(rowMeta, origin, "nacha_validation_raw_line");    // offending line; "" for PASS
+        } else if (outputMode == OutputMode.ENTRY_DETAILS) {
             addField(rowMeta, origin, "nacha_record_type");
-            // File header context
             addField(rowMeta, origin, "nacha_file_immediate_destination");
             addField(rowMeta, origin, "nacha_file_immediate_origin");
             addField(rowMeta, origin, "nacha_file_creation_date");
@@ -75,7 +88,6 @@ public class NachaReaderStepMeta extends BaseStepMeta implements StepMetaInterfa
             addField(rowMeta, origin, "nacha_file_id_modifier");
             addField(rowMeta, origin, "nacha_file_destination_name");
             addField(rowMeta, origin, "nacha_file_origin_name");
-            // Batch header context
             addField(rowMeta, origin, "nacha_batch_service_class_code");
             addField(rowMeta, origin, "nacha_batch_company_name");
             addField(rowMeta, origin, "nacha_batch_company_discretionary_data");
@@ -85,7 +97,6 @@ public class NachaReaderStepMeta extends BaseStepMeta implements StepMetaInterfa
             addField(rowMeta, origin, "nacha_batch_effective_entry_date");
             addField(rowMeta, origin, "nacha_batch_odfi_identification");
             addField(rowMeta, origin, "nacha_batch_number");
-            // Entry detail
             addField(rowMeta, origin, "nacha_entry_transaction_code");
             addField(rowMeta, origin, "nacha_entry_receiving_dfi_routing");
             addField(rowMeta, origin, "nacha_entry_check_digit");
@@ -100,7 +111,6 @@ public class NachaReaderStepMeta extends BaseStepMeta implements StepMetaInterfa
         } else {
             // ALL_RECORDS
             addField(rowMeta, origin, "nacha_record_type");
-            // File header
             addField(rowMeta, origin, "nacha_file_immediate_destination");
             addField(rowMeta, origin, "nacha_file_immediate_origin");
             addField(rowMeta, origin, "nacha_file_creation_date");
@@ -108,7 +118,6 @@ public class NachaReaderStepMeta extends BaseStepMeta implements StepMetaInterfa
             addField(rowMeta, origin, "nacha_file_id_modifier");
             addField(rowMeta, origin, "nacha_file_destination_name");
             addField(rowMeta, origin, "nacha_file_origin_name");
-            // Batch header / control
             addField(rowMeta, origin, "nacha_batch_service_class_code");
             addField(rowMeta, origin, "nacha_batch_company_name");
             addField(rowMeta, origin, "nacha_batch_company_discretionary_data");
@@ -122,7 +131,6 @@ public class NachaReaderStepMeta extends BaseStepMeta implements StepMetaInterfa
             addField(rowMeta, origin, "nacha_batch_entry_hash");
             addField(rowMeta, origin, "nacha_batch_total_debit");
             addField(rowMeta, origin, "nacha_batch_total_credit");
-            // Entry detail
             addField(rowMeta, origin, "nacha_entry_transaction_code");
             addField(rowMeta, origin, "nacha_entry_receiving_dfi_routing");
             addField(rowMeta, origin, "nacha_entry_check_digit");
@@ -133,12 +141,10 @@ public class NachaReaderStepMeta extends BaseStepMeta implements StepMetaInterfa
             addField(rowMeta, origin, "nacha_entry_discretionary_data");
             addField(rowMeta, origin, "nacha_entry_addenda_indicator");
             addField(rowMeta, origin, "nacha_entry_trace_number");
-            // Addenda
             addField(rowMeta, origin, "nacha_addenda_type_code");
             addField(rowMeta, origin, "nacha_addenda_payment_info");
             addField(rowMeta, origin, "nacha_addenda_sequence_number");
             addField(rowMeta, origin, "nacha_addenda_entry_sequence_number");
-            // File control
             addField(rowMeta, origin, "nacha_file_batch_count");
             addField(rowMeta, origin, "nacha_file_block_count");
             addField(rowMeta, origin, "nacha_file_entry_addenda_count");
@@ -162,6 +168,20 @@ public class NachaReaderStepMeta extends BaseStepMeta implements StepMetaInterfa
         StringBuilder sb = new StringBuilder();
         sb.append(XMLHandler.addTagValue("filePathField", filePathField));
         sb.append(XMLHandler.addTagValue("outputMode",    outputMode.name()));
+        sb.append("  <validation>").append(System.lineSeparator());
+        sb.append(XMLHandler.addTagValue("expectedImmediateDestination",
+            validationConfig.getExpectedImmediateDestination()));
+        sb.append(XMLHandler.addTagValue("expectedImmediateOrigin",
+            validationConfig.getExpectedImmediateOrigin()));
+        sb.append(XMLHandler.addTagValue("expectedCompanyName",
+            validationConfig.getExpectedCompanyName()));
+        sb.append(XMLHandler.addTagValue("expectedSecCode",
+            validationConfig.getExpectedSecCode()));
+        sb.append(XMLHandler.addTagValue("checkCounts",
+            String.valueOf(validationConfig.isCheckCounts())));
+        sb.append(XMLHandler.addTagValue("checkAmounts",
+            String.valueOf(validationConfig.isCheckAmounts())));
+        sb.append("  </validation>").append(System.lineSeparator());
         return sb.toString();
     }
 
@@ -169,9 +189,26 @@ public class NachaReaderStepMeta extends BaseStepMeta implements StepMetaInterfa
     public void loadXML(Node stepnode, List<DatabaseMeta> databases, IMetaStore metaStore)
             throws KettleXMLException {
         try {
-            filePathField = nvl(XMLHandler.getTagValue(stepnode, "filePathField"), "file_path");
-            String om     = XMLHandler.getTagValue(stepnode, "outputMode");
-            outputMode    = (om != null) ? OutputMode.valueOf(om) : OutputMode.ENTRY_DETAILS;
+            filePathField    = nvl(XMLHandler.getTagValue(stepnode, "filePathField"), "file_path");
+            String om        = XMLHandler.getTagValue(stepnode, "outputMode");
+            outputMode       = (om != null) ? OutputMode.valueOf(om) : OutputMode.ENTRY_DETAILS;
+            validationConfig = new NachaValidationConfig();
+
+            Node vNode = XMLHandler.getSubNode(stepnode, "validation");
+            if (vNode != null) {
+                validationConfig.setExpectedImmediateDestination(
+                    nvl(XMLHandler.getTagValue(vNode, "expectedImmediateDestination"), ""));
+                validationConfig.setExpectedImmediateOrigin(
+                    nvl(XMLHandler.getTagValue(vNode, "expectedImmediateOrigin"), ""));
+                validationConfig.setExpectedCompanyName(
+                    nvl(XMLHandler.getTagValue(vNode, "expectedCompanyName"), ""));
+                validationConfig.setExpectedSecCode(
+                    nvl(XMLHandler.getTagValue(vNode, "expectedSecCode"), ""));
+                validationConfig.setCheckCounts(
+                    !"false".equalsIgnoreCase(XMLHandler.getTagValue(vNode, "checkCounts")));
+                validationConfig.setCheckAmounts(
+                    !"false".equalsIgnoreCase(XMLHandler.getTagValue(vNode, "checkAmounts")));
+            }
         } catch (Exception e) {
             throw new KettleXMLException("Unable to load NachaReaderStep metadata from XML", e);
         }
@@ -179,15 +216,11 @@ public class NachaReaderStepMeta extends BaseStepMeta implements StepMetaInterfa
 
     @Override
     public void readRep(Repository rep, IMetaStore metaStore,
-            ObjectId id_step, List<DatabaseMeta> databases) throws KettleException {
-        // Repository persistence not implemented — transformations saved as XML files
-    }
+            ObjectId id_step, List<DatabaseMeta> databases) throws KettleException {}
 
     @Override
     public void saveRep(Repository rep, IMetaStore metaStore,
-            ObjectId id_transformation, ObjectId id_step) throws KettleException {
-        // Repository persistence not implemented
-    }
+            ObjectId id_transformation, ObjectId id_step) throws KettleException {}
 
     @Override
     public void check(List<CheckResultInterface> remarks, TransMeta transMeta,

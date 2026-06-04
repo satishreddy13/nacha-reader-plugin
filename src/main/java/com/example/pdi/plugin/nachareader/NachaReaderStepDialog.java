@@ -26,21 +26,34 @@ import org.pentaho.di.trans.step.BaseStepMeta;
 import org.pentaho.di.trans.step.StepDialogInterface;
 import org.pentaho.di.ui.trans.step.BaseStepDialog;
 
+import com.example.pdi.plugin.nachareader.nacha.NachaValidationConfig;
+
 /**
  * Spoon dialog for the NACHA ACH File Reader step.
  *
- * Single "Settings" tab:
- *   - File Path Field  : combo populated from upstream step fields
- *   - Output Mode      : radio — Entry Details / All Records
+ * Tab 1 — Settings  : file path field, output mode (Entry Details / All Records / Validate)
+ * Tab 2 — Validation: header config + count/amount check options (active in Validate mode)
  */
 public class NachaReaderStepDialog extends BaseStepDialog implements StepDialogInterface {
 
     private final NachaReaderStepMeta input;
     private final TransMeta           transMeta;
 
+    // ---- Settings tab ----
     private Combo  wFilePathField;
     private Button wRadioEntryDetails;
     private Button wRadioAllRecords;
+    private Button wRadioValidate;
+
+    // ---- Validation tab — header config ----
+    private Text wExpectedDestination;
+    private Text wExpectedOrigin;
+    private Text wExpectedCompanyName;
+    private Text wExpectedSecCode;
+
+    // ---- Validation tab — checks ----
+    private Button wCheckCounts;
+    private Button wCheckAmounts;
 
     public NachaReaderStepDialog(Shell parent, Object baseStepMeta,
             TransMeta transMeta, String stepname) {
@@ -66,7 +79,7 @@ public class NachaReaderStepDialog extends BaseStepDialog implements StepDialogI
         formLayout.marginHeight = Const.FORM_MARGIN;
         shell.setLayout(formLayout);
         shell.setText("NACHA ACH File Reader");
-        shell.setSize(520, 340);
+        shell.setSize(560, 460);
 
         int middle = props.getMiddlePct();
         int margin  = Const.MARGIN;
@@ -118,6 +131,7 @@ public class NachaReaderStepDialog extends BaseStepDialog implements StepDialogI
         tabFolder.setLayoutData(fdTabFolder);
 
         buildSettingsTab(tabFolder, lsMod, middle, margin);
+        buildValidationTab(tabFolder, lsMod, middle, margin);
 
         tabFolder.setSelection(0);
 
@@ -143,7 +157,7 @@ public class NachaReaderStepDialog extends BaseStepDialog implements StepDialogI
     }
 
     // -----------------------------------------------------------------------
-    // Tab builder
+    // Tab builders
     // -----------------------------------------------------------------------
 
     private void buildSettingsTab(CTabFolder folder, ModifyListener lsMod,
@@ -177,17 +191,12 @@ public class NachaReaderStepDialog extends BaseStepDialog implements StepDialogI
         fdFPF.right = new FormAttachment(100, 0);
         wFilePathField.setLayoutData(fdFPF);
 
-        // Populate combo with upstream field names
         try {
             org.pentaho.di.trans.step.StepMeta sm = new org.pentaho.di.trans.step.StepMeta();
             sm.setName(stepname);
             RowMetaInterface prevFields = transMeta.getPrevStepFields(sm);
-            if (prevFields != null) {
-                wFilePathField.setItems(prevFields.getFieldNames());
-            }
-        } catch (Exception ex) {
-            // upstream not connected yet — leave empty; user can type manually
-        }
+            if (prevFields != null) wFilePathField.setItems(prevFields.getFieldNames());
+        } catch (Exception ex) { /* not connected yet */ }
 
         // ---- Output Mode group ----
         Group gMode = new Group(comp, SWT.SHADOW_ETCHED_IN);
@@ -196,7 +205,6 @@ public class NachaReaderStepDialog extends BaseStepDialog implements StepDialogI
         FormLayout gfl = new FormLayout();
         gfl.marginWidth = gfl.marginHeight = Const.MARGIN;
         gMode.setLayout(gfl);
-
         FormData fdMode = new FormData();
         fdMode.left  = new FormAttachment(0, 0);
         fdMode.right = new FormAttachment(100, 0);
@@ -204,7 +212,8 @@ public class NachaReaderStepDialog extends BaseStepDialog implements StepDialogI
         gMode.setLayoutData(fdMode);
 
         wRadioEntryDetails = new Button(gMode, SWT.RADIO);
-        wRadioEntryDetails.setText("Entry Details  (one output row per type-6 record, enriched with file/batch context)");
+        wRadioEntryDetails.setText(
+            "Entry Details  (one output row per type-6 record, enriched with file/batch context)");
         props.setLook(wRadioEntryDetails);
         FormData fdED = new FormData();
         fdED.left = new FormAttachment(0, 0);
@@ -215,7 +224,8 @@ public class NachaReaderStepDialog extends BaseStepDialog implements StepDialogI
         });
 
         wRadioAllRecords = new Button(gMode, SWT.RADIO);
-        wRadioAllRecords.setText("All Records  (one output row per NACHA line — types 1, 5, 6, 7, 8, 9)");
+        wRadioAllRecords.setText(
+            "All Records  (one output row per NACHA line — types 1, 5, 6, 7, 8, 9)");
         props.setLook(wRadioAllRecords);
         FormData fdAR = new FormData();
         fdAR.left = new FormAttachment(0, 0);
@@ -225,7 +235,120 @@ public class NachaReaderStepDialog extends BaseStepDialog implements StepDialogI
             @Override public void widgetSelected(SelectionEvent e) { input.setChanged(); }
         });
 
+        wRadioValidate = new Button(gMode, SWT.RADIO);
+        wRadioValidate.setText(
+            "Validate  (structural integrity check — PASS or one FAIL row per error found)");
+        props.setLook(wRadioValidate);
+        FormData fdV = new FormData();
+        fdV.left = new FormAttachment(0, 0);
+        fdV.top  = new FormAttachment(wRadioAllRecords, margin);
+        wRadioValidate.setLayoutData(fdV);
+        wRadioValidate.addSelectionListener(new SelectionAdapter() {
+            @Override public void widgetSelected(SelectionEvent e) { input.setChanged(); }
+        });
+
         tab.setControl(comp);
+    }
+
+    private void buildValidationTab(CTabFolder folder, ModifyListener lsMod,
+            int middle, int margin) {
+
+        CTabItem tab = new CTabItem(folder, SWT.NONE);
+        tab.setText("Validation");
+
+        Composite comp = new Composite(folder, SWT.NONE);
+        props.setLook(comp);
+        FormLayout fl = new FormLayout();
+        fl.marginWidth = fl.marginHeight = Const.MARGIN;
+        comp.setLayout(fl);
+
+        // ---- Header Config group ----
+        Group gHeader = new Group(comp, SWT.SHADOW_ETCHED_IN);
+        gHeader.setText("Expected Header Values  (leave blank to skip check)");
+        props.setLook(gHeader);
+        FormLayout hfl = new FormLayout();
+        hfl.marginWidth = hfl.marginHeight = Const.MARGIN;
+        gHeader.setLayout(hfl);
+        FormData fdHeader = new FormData();
+        fdHeader.left  = new FormAttachment(0, 0);
+        fdHeader.right = new FormAttachment(100, 0);
+        fdHeader.top   = new FormAttachment(0, margin);
+        gHeader.setLayoutData(fdHeader);
+
+        wExpectedDestination = addLabelText(gHeader, lsMod, middle, margin,
+            "Immediate Destination", null);
+        wExpectedOrigin = addLabelText(gHeader, lsMod, middle, margin,
+            "Immediate Origin", wExpectedDestination);
+        wExpectedCompanyName = addLabelText(gHeader, lsMod, middle, margin,
+            "Company Name", wExpectedOrigin);
+        wExpectedSecCode = addLabelText(gHeader, lsMod, middle, margin,
+            "SEC Code  (e.g. PPD, CCD, WEB)", wExpectedCompanyName);
+
+        // ---- Integrity Checks group ----
+        Group gChecks = new Group(comp, SWT.SHADOW_ETCHED_IN);
+        gChecks.setText("Integrity Checks");
+        props.setLook(gChecks);
+        FormLayout cfl = new FormLayout();
+        cfl.marginWidth = cfl.marginHeight = Const.MARGIN;
+        gChecks.setLayout(cfl);
+        FormData fdChecks = new FormData();
+        fdChecks.left  = new FormAttachment(0, 0);
+        fdChecks.right = new FormAttachment(100, 0);
+        fdChecks.top   = new FormAttachment(gHeader, margin * 2);
+        gChecks.setLayoutData(fdChecks);
+
+        wCheckCounts = new Button(gChecks, SWT.CHECK);
+        wCheckCounts.setText(
+            "Check entry/addenda counts and entry hash match batch and file control records");
+        props.setLook(wCheckCounts);
+        FormData fdCC = new FormData();
+        fdCC.left = new FormAttachment(0, 0);
+        fdCC.top  = new FormAttachment(0, margin);
+        wCheckCounts.setLayoutData(fdCC);
+        wCheckCounts.addSelectionListener(new SelectionAdapter() {
+            @Override public void widgetSelected(SelectionEvent e) { input.setChanged(); }
+        });
+
+        wCheckAmounts = new Button(gChecks, SWT.CHECK);
+        wCheckAmounts.setText(
+            "Check debit/credit totals match batch and file control records");
+        props.setLook(wCheckAmounts);
+        FormData fdCA = new FormData();
+        fdCA.left = new FormAttachment(0, 0);
+        fdCA.top  = new FormAttachment(wCheckCounts, margin);
+        wCheckAmounts.setLayoutData(fdCA);
+        wCheckAmounts.addSelectionListener(new SelectionAdapter() {
+            @Override public void widgetSelected(SelectionEvent e) { input.setChanged(); }
+        });
+
+        tab.setControl(comp);
+    }
+
+    /** Adds a right-aligned label + single-line text field; {@code above} may be null for first row. */
+    private Text addLabelText(Composite parent, ModifyListener lsMod,
+            int middle, int margin, String labelText, Text above) {
+        Label lbl = new Label(parent, SWT.RIGHT);
+        lbl.setText(labelText);
+        props.setLook(lbl);
+        FormData fdLbl = new FormData();
+        fdLbl.left  = new FormAttachment(0, 0);
+        fdLbl.right = new FormAttachment(middle, -margin);
+        fdLbl.top   = above == null
+            ? new FormAttachment(0, margin)
+            : new FormAttachment(above, margin);
+        lbl.setLayoutData(fdLbl);
+
+        Text txt = new Text(parent, SWT.SINGLE | SWT.LEFT | SWT.BORDER);
+        props.setLook(txt);
+        txt.addModifyListener(lsMod);
+        FormData fdTxt = new FormData();
+        fdTxt.left  = new FormAttachment(middle, 0);
+        fdTxt.right = new FormAttachment(100, 0);
+        fdTxt.top   = above == null
+            ? new FormAttachment(0, margin)
+            : new FormAttachment(above, margin);
+        txt.setLayoutData(fdTxt);
+        return txt;
     }
 
     // -----------------------------------------------------------------------
@@ -234,22 +357,44 @@ public class NachaReaderStepDialog extends BaseStepDialog implements StepDialogI
 
     private void getData() {
         wFilePathField.setText(nvl(input.getFilePathField()));
-        boolean allRecords = input.getOutputMode() == NachaReaderStepMeta.OutputMode.ALL_RECORDS;
-        wRadioEntryDetails.setSelection(!allRecords);
-        wRadioAllRecords.setSelection(allRecords);
+
+        NachaReaderStepMeta.OutputMode mode = input.getOutputMode();
+        wRadioEntryDetails.setSelection(mode == NachaReaderStepMeta.OutputMode.ENTRY_DETAILS);
+        wRadioAllRecords.setSelection(mode   == NachaReaderStepMeta.OutputMode.ALL_RECORDS);
+        wRadioValidate.setSelection(mode     == NachaReaderStepMeta.OutputMode.VALIDATE);
+
+        NachaValidationConfig cfg = input.getValidationConfig();
+        wExpectedDestination.setText(nvl(cfg.getExpectedImmediateDestination()));
+        wExpectedOrigin.setText(nvl(cfg.getExpectedImmediateOrigin()));
+        wExpectedCompanyName.setText(nvl(cfg.getExpectedCompanyName()));
+        wExpectedSecCode.setText(nvl(cfg.getExpectedSecCode()));
+        wCheckCounts.setSelection(cfg.isCheckCounts());
+        wCheckAmounts.setSelection(cfg.isCheckAmounts());
     }
 
     private void ok() {
         String fpf = wFilePathField.getText().trim();
-        if (fpf.isEmpty()) {
-            wFilePathField.setFocus();
-            return;
-        }
+        if (fpf.isEmpty()) { wFilePathField.setFocus(); return; }
+
         stepname = wStepname.getText();
         input.setFilePathField(fpf);
-        input.setOutputMode(wRadioAllRecords.getSelection()
-            ? NachaReaderStepMeta.OutputMode.ALL_RECORDS
-            : NachaReaderStepMeta.OutputMode.ENTRY_DETAILS);
+
+        if (wRadioValidate.getSelection()) {
+            input.setOutputMode(NachaReaderStepMeta.OutputMode.VALIDATE);
+        } else if (wRadioAllRecords.getSelection()) {
+            input.setOutputMode(NachaReaderStepMeta.OutputMode.ALL_RECORDS);
+        } else {
+            input.setOutputMode(NachaReaderStepMeta.OutputMode.ENTRY_DETAILS);
+        }
+
+        NachaValidationConfig cfg = input.getValidationConfig();
+        cfg.setExpectedImmediateDestination(wExpectedDestination.getText().trim());
+        cfg.setExpectedImmediateOrigin(wExpectedOrigin.getText().trim());
+        cfg.setExpectedCompanyName(wExpectedCompanyName.getText().trim());
+        cfg.setExpectedSecCode(wExpectedSecCode.getText().trim());
+        cfg.setCheckCounts(wCheckCounts.getSelection());
+        cfg.setCheckAmounts(wCheckAmounts.getSelection());
+
         dispose();
     }
 
